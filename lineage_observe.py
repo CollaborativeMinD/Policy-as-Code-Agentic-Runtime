@@ -7,6 +7,7 @@ import sys
 
 from run_ledger import TERMINAL, read_verified
 from runtime_codec import Denied, require, wire
+from runtime_assets import asset
 
 
 METADATA_FIELDS = {
@@ -139,7 +140,7 @@ def postgres_ancestors(graph):
     except ImportError:
         raise Denied("PostgreSQL observer requires requirements-postgres.lock") from None
     require(graph["receipt"] is not None, "PostgreSQL traversal requires a terminal receipt")
-    query = Path(__file__).with_name("postgres_lineage.sql").read_text(encoding="utf-8")
+    query = asset("postgres_lineage.sql").read_text(encoding="utf-8")
     try:
         with psycopg.connect(connect_timeout=5, options="-c search_path=pg_catalog -c statement_timeout=5000") as conn:
             conn.execute("SET TRANSACTION READ ONLY")

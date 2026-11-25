@@ -1,0 +1,4 @@
+include README.md LICENSE requirements*.lock
+include deployment.toml Dockerfile .dockerignore
+include *.toml *.json *.sql
+include deploy_common.py deployment_effect.py

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools==80.9.0", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "policy-as-code-agentic-runtime"
+version = "0.2.0"
+description = "Policy-bound task admission and verifiable receipt lineage"
+readme = "README.md"
+requires-python = ">=3.11"
+license-files = ["LICENSE"]
+dependencies = ["pydantic==2.14.4", "pyrsistent==0.20.0", "tenacity==9.2.1"]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]==3.3.9"]
+
+[project.scripts]
+prompt-chain-run = "inventory_demo:main"
+prompt-chain-observe = "lineage_observe:main"
+
+[tool.setuptools]
+py-modules = ["inventory_demo", "lineage_observe", "resilience_gate", "run_ledger",
+              "runtime_assets", "runtime_codec", "task_chain", "workflow_contracts"]
+
+[tool.setuptools.data-files]
+"share/prompt-chain" = ["inventory_request.json", "postgres_lineage.sql", "workflow_policy.toml"]

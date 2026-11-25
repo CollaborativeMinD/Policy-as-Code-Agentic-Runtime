@@ -62,4 +62,27 @@ The standalone tracer verifies that two packets keep their original size when 51
 
 The checked-in runs use deterministic inventory callbacks against a structured requirement manifest. Model integrations supply their own intent capture, decomposition, isolated execution, and verifiers for the request semantics. The supplied policy measures UTF-8 bytes and deterministically schedules a validated graph. Model quality, token counts, and tool side effects require separate verification.
 
+## Install and deploy a qualified release
+
+Forgejo builds the sdist and wheel on Linux and native Windows. Each job installs the wheel into a fresh environment and uses it to publish a result and verify its receipt. The AMD64 and ARM64 Compose jobs build images from the pinned [deployment policy](deployment.toml), run the writer and observer, and trace the receipt through PostgreSQL. They publish the image archive, rendered Compose file, and signed witness. [Forgejo workflow](.forgejo/workflows/distribution.yml)
+
+To install a Python release, use its wheel in a dedicated virtual environment. Install the locked dependencies first.
+
+```sh
+python -m pip install -r requirements-postgres.lock
+python -m pip install --no-deps ./policy_as_code_agentic_runtime-0.2.0-py3-none-any.whl
+prompt-chain-run local-inventory
+prompt-chain-observe local-inventory/run.sqlite
+```
+
+Load the image archive for your Linux architecture with `docker image load -i <archive>`. Use the image tag in its signed `verification.json`. Render the same deployment policy into a new directory, then run the writer and read-only observer against their shared volume.
+
+```sh
+python deploy_common.py render --platform linux/amd64 --image <qualified-image-tag> --output local-deploy
+docker compose -f local-deploy/compose.json run --rm writer /state/inventory
+docker compose -f local-deploy/compose.json run --rm observer /state/inventory/run.sqlite
+```
+
+The `postgres` profile adds a database on an internal network. It publishes no host port. Set `LINEAGE_PASSWORD` in the deployment environment and provision a non-superuser `lineage_reader` before invoking the observer with `--postgres`. The qualification job provisions its own disposable credentials and removes its test volumes.
+
 The implementation follows the storage adapter’s operator-declared configuration, Telemetry-to-Iceberg’s strict typed policy and evidence, and HMT DevSecOps’ binding of validated policy to recognized runtime behavior. [Storage policy](https://github.com/CollaborativeMinD/Telemetry-Storage-Adapter-/blob/a7eee2f586e884fb0ec35308780164c8ef2b4b8e/config/storage_policy.toml) · [Telemetry-to-Iceberg policy](https://github.com/CollaborativeMinD/Telemetry-To-Iceberg-Stream/blob/192d04eb4766e5954e33ad511aa6ef2ec9ca8fd6/telemetry_iceberg_stream/policy.py) · [HMT policy](https://github.com/CollaborativeMinD/HMT-DevSecOPs-lib/blob/4f0624b2d5314005261f75391d390aa4a7c27d87/src/hmt_devsecops/policy.py)

@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from task_chain import Denied, load_policy, require, run, wire
+from runtime_assets import asset
 
 
 ROOT = Path(__file__).resolve().parent
@@ -133,8 +134,8 @@ CHECKS = {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("evidence_dir", type=Path, help="New directory for the run ledger")
-    parser.add_argument("--policy", type=Path, default=ROOT / "workflow_policy.toml")
-    parser.add_argument("--request", type=Path, default=ROOT / "inventory_request.json")
+    parser.add_argument("--policy", type=Path, default=asset("workflow_policy.toml"))
+    parser.add_argument("--request", type=Path, default=asset("inventory_request.json"))
     args = parser.parse_args()
     try:
         policy = load_policy(args.policy)

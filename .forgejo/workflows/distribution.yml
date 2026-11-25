@@ -1,0 +1,115 @@
+name: Workstation distribution qualification
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux Python distributions
+    runs-on: station-linux
+    timeout-minutes: 20
+    steps:
+      - name: Check out the triggering revision
+        env:
+          CHECKOUT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import base64
+          import os
+          import subprocess
+          from pathlib import Path
+
+          assert os.getuid() != 0
+          assert not Path("/var/run/docker.sock").exists()
+          auth = base64.b64encode(f"x-access-token:{os.environ['CHECKOUT_TOKEN']}".encode()).decode()
+          env = dict(os.environ, GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="http.extraHeader",
+                     GIT_CONFIG_VALUE_0=f"Authorization: Basic {auth}", GIT_TERMINAL_PROMPT="0")
+          revision = os.environ["GITHUB_SHA"]
+          remote = f"http://forgejo:3000/{os.environ['GITHUB_REPOSITORY']}.git"
+          subprocess.run(["git", "init", "-q", "checkout"], check=True)
+          subprocess.run(["git", "-C", "checkout", "fetch", "-q", "--depth=1", remote, revision], env=env, check=True)
+          subprocess.run(["git", "-C", "checkout", "checkout", "-q", "--detach", "FETCH_HEAD"], check=True)
+          PY
+      - name: Build and verify sdist and wheel
+        working-directory: checkout
+        run: |
+          set -eu
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install -r requirements-postgres.lock -r requirements-build.lock
+          python -m pip check
+          python deploy_common.py package --output local-proof
+      - name: Publish Linux distribution evidence
+        uses: https://data.forgejo.org/forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e
+        with:
+          name: linux-python
+          path: checkout/local-proof/
+          if-no-files-found: error
+
+  windows:
+    name: Native Windows Python distributions
+    runs-on: station-windows
+    timeout-minutes: 25
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Build and verify sdist and wheel
+        shell: powershell
+        run: |
+          py -3.13 -m venv .venv
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $python = '.\.venv\Scripts\python.exe'
+          & $python -m pip install -r requirements-postgres.lock -r requirements-build.lock
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $python -m pip check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $python deploy_common.py package --output local-proof
+          exit $LASTEXITCODE
+      - name: Publish Windows distribution evidence
+        uses: https://data.forgejo.org/forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e
+        with:
+          name: windows-python
+          path: local-proof/
+          if-no-files-found: error
+
+  compose:
+    name: Compose and image distribution (${{ matrix.arch }})
+    runs-on: station-windows
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Build image, run Compose, and export the image
+        shell: powershell
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          py -3.13 deploy_common.py compose --platform "linux/$env:TARGET_ARCH" --output local-proof
+          exit $LASTEXITCODE
+      - name: Publish signed Compose evidence and image
+        uses: https://data.forgejo.org/forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e
+        with:
+          name: compose-${{ matrix.arch }}
+          path: local-proof/
+          if-no-files-found: error
+
+  qualified:
+    name: Qualify exact workstation revision
+    runs-on: station-linux
+    needs: [linux, windows, compose]
+    steps:
+      - name: Record passing revision
+        run: |
+          printf 'Linux and Windows packages, and AMD64 and ARM64 Compose distributions passed for %s.\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"

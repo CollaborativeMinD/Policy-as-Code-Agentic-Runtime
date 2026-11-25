@@ -1,0 +1,12 @@
+**
+!*.py
+!pyproject.toml
+!MANIFEST.in
+!LICENSE
+!README.md
+!requirements*.lock
+!workflow_policy.toml
+!inventory_request.json
+!postgres_lineage.sql
+!policy.example.toml
+!baseline_catalog.json

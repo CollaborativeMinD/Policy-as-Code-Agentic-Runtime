@@ -1,4 +1,4 @@
-# CPython 3.11 through 3.14 wheels for Windows AMD64 and glibc Linux x86-64.
+# CPython 3.11 through 3.14 wheels for Windows AMD64 and glibc Linux x86-64 and ARM64.
 --require-hashes
 --only-binary=:all:
 annotated-types==0.8.0 \
@@ -6,10 +6,14 @@ annotated-types==0.8.0 \
 pydantic==2.14.4 \
     --hash=sha256:653a2ad9f6d8858529c77c72717d0ea991d6c6837fe683246b2f4b2bbfc3fadc
 pydantic-core==2.50.5 \
+    --hash=sha256:07a62d44515d674d750cfd86b7ce1dd93111be870f378d7c27b37aeb78d0cb4a \
+    --hash=sha256:27bc22dc8d50335bc62296261a7dc4c2572149910ba7c274ef0f945b5be0d570 \
     --hash=sha256:470bbc2495367f60d3ca849a8039e4c164701d10637e7743f4427d92651bdb6d \
     --hash=sha256:488319076ec92908b91fc6265ce761f1d78748f69f85518564fd16bf333e1b70 \
     --hash=sha256:887424ba7c2145e97f131bc2cc73383a8c464d7bcd56eb98bbd941afb6868b95 \
     --hash=sha256:88b543705849d0c59343f97c38296dbf59eb7b3c9565bd4fe1ed638ba38da5ed \
+    --hash=sha256:8bbe282e79dc71b24ba7be284eacf27c8ddff8f26911e2030a0dd123c6aed326 \
+    --hash=sha256:ba2b34529984a8e3cb1bc62a7687617722695a2cb4e57958de32a0eba128a07a \
     --hash=sha256:baa107902f8e38011a5f79836d905eb6bfaac1d4b0bd09fc86509b711d0b09c8 \
     --hash=sha256:cbfde3ad127786f1dea1a6cd89a5eb824a16203f24743ad2b4e07506f43bc844 \
     --hash=sha256:d34c0d4dd4a318f2be788a60a972c3a1ed5da0155a7c06d6dd810dc5d60ad704 \
@@ -17,6 +21,8 @@ pydantic-core==2.50.5 \
 pyrsistent==0.20.0 \
     --hash=sha256:4021a7f963d88ccd15b523787d18ed5e5269ce57aa4037146a2377ff607ae87d \
     --hash=sha256:59a89bccd615551391f3237e00006a26bcf98a4d18623a19909a2c48b8e986ee \
+    --hash=sha256:5cdd7ef1ea7a491ae70d826b6cc64868de09a1d5ff9ef8d574250d0940e275b8 \
+    --hash=sha256:a14798c3005ec892bbada26485c2eea3b54109cb2533713e355c806891f63c5e \
     --hash=sha256:b14decb628fac50db5e02ee5a35a9c0772d20277824cfe845c8a8b717c15daa3 \
     --hash=sha256:c55acc4733aad6560a7f5f818466631f07efc001fd023f34a6c203f8b6df0f0b \
     --hash=sha256:cae40a9e3ce178415040a0383f00e8d68b569e97f31928a3a8ad37e3fde6df6a

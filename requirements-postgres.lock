@@ -1,4 +1,4 @@
-# CPython 3.11 through 3.14 wheels for Windows AMD64 and glibc Linux x86-64.
+# CPython 3.11 through 3.14 wheels for Windows AMD64 and glibc Linux x86-64 and ARM64.
 --require-hashes
 --only-binary=:all:
 -r requirements.lock
@@ -9,9 +9,13 @@ psycopg-binary==3.3.9 \
     --hash=sha256:109c5df5b0e5117e01a42d3b56a2f4ccd5431bd54d25efdfc89df095ac9f9605 \
     --hash=sha256:180e4a99904d7a77f826fbb6dd16834bb3313675d8a6f055e39742fda00c33dc \
     --hash=sha256:1ce1a6f04211626ca1a3deadee560235e8686e3888fb18f78d2be3e83bceabc4 \
+    --hash=sha256:366e2021a785afed9154f83f64793f662348a9ef244fef9779175c0906e8aacc \
     --hash=sha256:417c3fe0ac2079a82a8c72ba214a65c66c22036a5d2d8c24c77c5708a58938b9 \
     --hash=sha256:4992acd5a7479013d52615b8c23fdce9bc22f3cacbfb1007fa474e6b5ebe94c7 \
     --hash=sha256:75dc9ebbad779969174e59422c71444c2bd8d0362d5758a7b6f500eff11aa4ac \
-    --hash=sha256:a99f0b9a19ed7a56bf5d6776456b8f15f5364db8853b0f5d184db394a45c391d
+    --hash=sha256:9f6f4108a2e1d55303dfbb41d0f3b16a0aac95232a24ac8eb3df03f56fcb83aa \
+    --hash=sha256:a99f0b9a19ed7a56bf5d6776456b8f15f5364db8853b0f5d184db394a45c391d \
+    --hash=sha256:b081348d8992af26e9b252f04876c286428418a6b7845d8d4caae2044b259668 \
+    --hash=sha256:eed1ac135d652e4454777afb4e4bb52cf88520bbfa2f30ae83066cd4df656697
 tzdata==2026.6 ; sys_platform == 'win32' \
     --hash=sha256:0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec
