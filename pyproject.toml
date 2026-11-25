@@ -20,7 +20,7 @@ prompt-chain-observe = "lineage_observe:main"
 
 [tool.setuptools]
 py-modules = ["inventory_demo", "lineage_observe", "resilience_gate", "run_ledger",
-              "runtime_assets", "runtime_codec", "task_chain", "workflow_contracts"]
+              "native_budget", "runtime_assets", "runtime_codec", "task_chain", "workflow_contracts"]
 
 [tool.setuptools.data-files]
-"share/prompt-chain" = ["inventory_request.json", "postgres_lineage.sql", "workflow_policy.toml"]
+"share/prompt-chain" = ["inventory_request.json", "observer_policy.toml", "postgres_lineage.sql", "workflow_policy.toml"]

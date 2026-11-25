@@ -10,3 +10,5 @@ Start with [workflow_policy.toml](workflow_policy.toml) for this component and [
 4. Qualify the exact commit on local Forgejo. Review the package, image, security scan and receipt for each release target. Ship the reviewed artifacts and record their digests.
 
 The version 2 `[runtime]` table in `console.toml` sets request size, concurrency and client deadlines. Version 1 files inherit the shipped budget. Reissue them as version 2 to pin these choices in the admitted document.
+
+Set PostgreSQL connection and statement deadlines in [observer_policy.toml](observer_policy.toml). Supply a candidate with `prompt-chain-observe --postgres --observer-policy FILE LEDGER`.

@@ -8,6 +8,7 @@ import sys
 from run_ledger import TERMINAL, read_verified
 from runtime_codec import Denied, require, wire
 from runtime_assets import asset
+from native_budget import ObserverBudget
 
 
 METADATA_FIELDS = {
@@ -132,7 +133,7 @@ def _verify_receipt(event, origin, plan, effect):
             and (effect is None or event.task_id == effect.task_id), "receipt lineage mismatch")
 
 
-def postgres_ancestors(graph):
+def postgres_ancestors(graph, policy_path=None):
     """Traverse receipt ancestry with native PostgreSQL SQL and a read-only transaction."""
     try:
         import psycopg
@@ -140,9 +141,10 @@ def postgres_ancestors(graph):
     except ImportError:
         raise Denied("PostgreSQL observer requires requirements-postgres.lock") from None
     require(graph["receipt"] is not None, "PostgreSQL traversal requires a terminal receipt")
+    budget = ObserverBudget.read(policy_path or asset("observer_policy.toml"))
     query = asset("postgres_lineage.sql").read_text(encoding="utf-8")
     try:
-        with psycopg.connect(connect_timeout=5, options="-c search_path=pg_catalog -c statement_timeout=5000") as conn:
+        with psycopg.connect(connect_timeout=budget.connect_seconds, options=f"-c search_path=pg_catalog -c statement_timeout={budget.statement_ms}") as conn:
             conn.execute("SET TRANSACTION READ ONLY")
             return conn.execute(query, (Jsonb(graph["nodes"]), Jsonb(graph["edges"]),
                                         graph["receipt"]["sequence"])).fetchone()[0]
@@ -155,11 +157,12 @@ def main():
     parser.add_argument("ledger", type=Path)
     parser.add_argument("--expect-receipt", help="Receipt SHA-256 from a trusted independent copy")
     parser.add_argument("--postgres", action="store_true", help="Traverse the receipt graph using libpq environment settings")
+    parser.add_argument("--observer-policy", type=Path, help="TOML connection and statement budgets")
     args = parser.parse_args()
     try:
         graph = observe(args.ledger, args.expect_receipt)
         if args.postgres:
-            graph["postgres_ancestors"] = postgres_ancestors(graph)
+            graph["postgres_ancestors"] = postgres_ancestors(graph, args.observer_policy)
         print(wire(graph).decode())
     except (Denied, OSError, sqlite3.Error, KeyError, TypeError):
         sys.exit("Lineage observation denied")
