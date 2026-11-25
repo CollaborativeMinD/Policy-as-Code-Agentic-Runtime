@@ -1,0 +1,25 @@
+{
+  "inputs": {
+    "records": [
+      {"id": "r1", "location": " north ", "quantity": 4},
+      {"id": "r2", "location": "south", "quantity": 0},
+      {"id": "r3", "location": "North", "quantity": 2},
+      {"id": "r4", "location": "south", "quantity": 3}
+    ],
+    "operator_note": "Fixture field reserved for the planner. This field must stay out of task prompts."
+  },
+  "requirements": {
+    "normalize_locations": {
+      "text": "Trim and uppercase each location without dropping rows.",
+      "profiles": ["normalize"]
+    },
+    "count_inventory": {
+      "text": "Return the total inventory quantity at each normalized location.",
+      "profiles": ["count"]
+    },
+    "report_exceptions": {
+      "text": "Include every zero-quantity record ID in lexical order.",
+      "profiles": ["flag"]
+    }
+  }
+}

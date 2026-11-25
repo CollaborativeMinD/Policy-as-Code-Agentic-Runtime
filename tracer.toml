@@ -1,0 +1,9 @@
+[task."01"]
+after = []
+rule = "Return the integer 2"
+expected = 2
+
+[task."02"]
+after = ["01"]
+rule = "Add 1 to the admitted input"
+expected = 3

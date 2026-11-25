@@ -1,0 +1,38 @@
+version = 1
+policy_id = "scoped-task-chain"
+generation = 1
+final_profile = "report"
+final_checks = ["original_request_reconciliation"]
+
+[limits]
+request_bytes = 65536
+planner_packet_bytes = 81920
+plan_bytes = 65536
+task_count = 64
+predecessor_count = 16
+prompt_bytes = 4096
+output_bytes = 2048
+
+[profiles.normalize]
+objective = "Normalize the inventory receipt."
+rules = ["Keep every submitted row.", "Trim and uppercase the storage location."]
+inputs = { records = "request.records" }
+checks = ["normalized_receipt"]
+
+[profiles.count]
+objective = "Calculate inventory totals by storage location."
+rules = ["Sum all quantities for each normalized location, including zero-quantity rows."]
+inputs = { receipt = "task.normalize" }
+checks = ["location_totals"]
+
+[profiles.flag]
+objective = "Identify the zero-quantity inventory rows."
+rules = ["Report row IDs in ascending lexical order."]
+inputs = { receipt = "task.normalize" }
+checks = ["zero_quantity_rows"]
+
+[profiles.report]
+objective = "Assemble the final inventory report from admitted totals and flags."
+rules = ["Return both location totals and zero-quantity row IDs."]
+inputs = { counts = "task.count", exceptions = "task.flag" }
+checks = ["report_assembly"]
