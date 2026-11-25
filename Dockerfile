@@ -11,10 +11,10 @@ WORKDIR /src
 COPY . .
 RUN python -m pip install --no-cache-dir -r requirements-build.lock \
     && python -m build --wheel --no-isolation --outdir /dist
-RUN python -m venv /opt/venv \
-    && /opt/venv/bin/python -m pip install --no-cache-dir -r requirements-postgres.lock \
-    && /opt/venv/bin/python -m pip install --no-index --no-deps /dist/*.whl
-RUN /opt/venv/bin/python -m pip check
+RUN python -m venv --without-pip /opt/venv \
+    && python -m pip --python /opt/venv/bin/python install --no-cache-dir -r requirements-postgres.lock \
+    && python -m pip --python /opt/venv/bin/python install --no-index --no-deps /dist/*.whl
+RUN python -m pip --python /opt/venv/bin/python check
 
 FROM interpreter AS runtime
 ARG SERVICE_UID
