@@ -44,6 +44,7 @@ jobs:
           mkdir -p console-evidence
           python -m pip install -r requirements.lock
           python -m pip install -r requirements-console.txt
+          python -B -m unittest -v
           python -m pip check
           python -B -m console_app.verify
           git rev-parse HEAD > console-evidence/revision.txt
