@@ -5,4 +5,4 @@ python_image = "cgr.dev/chainguard/wolfi-base@sha256:28c39be5a5e1e9b85081c10740e
 python_apk = "3.13.18_git20261122-r0"
 uid = 10001
 gid = 10001
-postgres_image = "docker.io/library/postgres:18@sha256:c699303802144847d238196173655dbbecf7a96aeca1565f2b02eb671a1f0b6b"
+postgres_image = "dhi.io/postgres:18-alpine3.24@sha256:fbfb0074b60187b8fa93d5d3adc0689ca185c594289265c46111a0fb5f30b42a"

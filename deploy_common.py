@@ -63,7 +63,7 @@ def policy(path):
     for key in ("uid", "gid"):
         require(type(data[key]) is int and 1000 <= data[key] <= 65534, "Runtime must use an unprivileged ID")
     for key in app.POLICY_FIELDS:
-        require(type(data[key]) is str and BASE.fullmatch(data[key]), f"Unpinned image: {key}")
+        require(type(data[key]) is str and (BASE.fullmatch(data[key]) or re.fullmatch(r"dhi\.io/postgres:[a-z0-9.-]+@sha256:[a-f0-9]{64}", data[key])), f"Unpinned image: {key}")
     if data["version"] == 1:
         require(BASE.fullmatch(data["python_image"]) and data["python_image"].startswith("docker.io/library/python:"), "Pinned Python image required")
     else:

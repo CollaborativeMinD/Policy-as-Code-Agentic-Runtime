@@ -161,6 +161,21 @@ def scan(cfg, image, destination, scanner):
     return sha(destination)
 
 
+def scan_companion(cfg, platform, output, scanner):
+    native = tomllib.loads((ROOT / "deployment.toml").read_text(encoding="utf8"))
+    reference = native["postgres_image"]
+    index = json.loads(run("docker","buildx","imagetools","inspect","--raw", reference))
+    arch = platform.split("/")[1]
+    candidates = [m["digest"] for m in index["manifests"] if m.get("platform",{}).get("os") == "linux"
+                  and m["platform"].get("architecture") == arch]
+    if len(candidates) != 1 or not re.fullmatch("sha256:[0-9a-f]{64}", candidates[0]):
+        raise ValueError("Missing unique architecture for companion image")
+    child = reference.split("@")[0] + "@" + candidates[0]
+    run("docker","pull","--platform",platform,child,timeout=cfg.build_seconds)
+    digest = scan(cfg,child,output/"companion-scan.json",scanner)
+    return {"image":child,"platform":platform,"scan_sha256":digest}
+
+
 def container(cfg, commit, out, platform, scanner):
     if platform not in cfg.platforms:
         raise ValueError("Unadmitted platform")
@@ -180,6 +195,7 @@ def container(cfg, commit, out, platform, scanner):
     if image["Os"]+"/"+image["Architecture"]!=platform or image["Config"]["Labels"]["org.opencontainers.image.revision"]!=commit:
         raise ValueError("Image platform or origin mismatch")
     report=scan(cfg,tag,out/"scan.json",scanner)
+    companion=scan_companion(cfg,platform,out,scanner)
     spec=out/"compose.json"
     pin=hashlib.sha256(run("git","show",commit+":console.toml")).hexdigest()
     put(spec,cfg.compose(tag,platform,pin))
@@ -213,7 +229,7 @@ print(json.dumps(dict(status=result["status"], witness=result, uid=os.getuid(), 
     if json.loads(run("docker","image","inspect",tag))[0]["Id"]!=image["Id"]:
         raise ValueError("Restored image identity differs")
     put(out/"verification.json",dict(commit=commit,platform=platform,image=tag,image_id=image["Id"],
-        policy_sha256=pin, release_policy_sha256=sha(ROOT/"release/policy.toml"),scan_sha256=report,
+        companion=companion, policy_sha256=pin, release_policy_sha256=sha(ROOT/"release/policy.toml"),scan_sha256=report,
         distribution_sha256=sha(dest),compose_sha256=sha(spec),effect=witness))
 
 
