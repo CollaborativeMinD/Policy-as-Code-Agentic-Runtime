@@ -86,3 +86,7 @@ docker compose -f local-deploy/compose.json run --rm observer /state/inventory/r
 The `postgres` profile adds a database on an internal network. It publishes no host port. Set `LINEAGE_PASSWORD` in the deployment environment and provision a non-superuser `lineage_reader` before invoking the observer with `--postgres`. The qualification job provisions its own disposable credentials and removes its test volumes.
 
 The implementation follows the storage adapter’s operator-declared configuration, Telemetry-to-Iceberg’s strict typed policy and evidence, and HMT DevSecOps’ binding of validated policy to recognized runtime behavior. [Storage policy](https://github.com/CollaborativeMinD/Telemetry-Storage-Adapter-/blob/a7eee2f586e884fb0ec35308780164c8ef2b4b8e/config/storage_policy.toml) · [Telemetry-to-Iceberg policy](https://github.com/CollaborativeMinD/Telemetry-To-Iceberg-Stream/blob/192d04eb4766e5954e33ad511aa6ef2ec9ca8fd6/telemetry_iceberg_stream/policy.py) · [HMT policy](https://github.com/CollaborativeMinD/HMT-DevSecOPs-lib/blob/4f0624b2d5314005261f75391d390aa4a7c27d87/src/hmt_devsecops/policy.py)
+
+## Live operator console
+
+Use the [console guide](Console.md) to observe inventory, publish scoped TOML changes, run admitted tasks and verify their receipts.

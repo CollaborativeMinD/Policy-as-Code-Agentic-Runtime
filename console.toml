@@ -1,0 +1,18 @@
+version = 1
+component = "Agentic Runtime"
+host = "127.0.0.1"
+port = 8773
+protocol = "2026-07-28"
+poll_seconds = 3
+
+[roles]
+viewer = ["inventory.read"]
+admin = ["inventory.read", "policy.open", "policy.apply"]
+agent = ["inventory.read", "task.execute"]
+
+[resources.inventory-chain]
+operation = "inventory.run"
+editable_inputs = []
+source = "workflow_policy.toml"
+[resources.inventory-chain.inputs]
+quantity = 4
