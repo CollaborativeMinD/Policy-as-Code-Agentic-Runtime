@@ -46,6 +46,11 @@ jobs:
           mkdir local-ci-evidence
           git rev-parse HEAD > local-ci-evidence/revision.txt
           python --version > local-ci-evidence/python.txt
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install -r requirements-postgres.lock
+          python -m pip check
+          python -m pip freeze > local-ci-evidence/dependencies.txt
           python tracer.py > local-ci-evidence/tracer.json
           python -W error -m unittest -v > local-ci-evidence/tests.txt 2>&1 || {
             cat local-ci-evidence/tests.txt
@@ -53,6 +58,7 @@ jobs:
           }
           cat local-ci-evidence/tests.txt
           python inventory_demo.py local-ci-evidence/inventory > local-ci-evidence/result.json
+          python lineage_observe.py local-ci-evidence/inventory/run.sqlite > local-ci-evidence/lineage.json
           cat local-ci-evidence/result.json
       - name: Publish qualification evidence
         uses: https://data.forgejo.org/forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e

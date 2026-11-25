@@ -1,8 +1,18 @@
 version = 1
 policy_id = "scoped-task-chain"
-generation = 1
+generation = 2
 final_profile = "report"
 final_checks = ["original_request_reconciliation"]
+effect = "publish_final_artifact"
+
+[resilience]
+attempts = 3
+window_ns = 60_000_000_000
+attempt_bound_ns = 5_000_000_000
+fallback_reserve_ns = 100_000_000
+uncertainty_ns = 10_000_000
+backoff_ns = 50_000_000
+replay_profiles = ["normalize", "count", "flag", "report"]
 
 [limits]
 request_bytes = 65536

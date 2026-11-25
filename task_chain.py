@@ -1,75 +1,33 @@
 """Execute a policy-bound task graph using provider-neutral byte interfaces."""
 
 from collections.abc import Callable, Mapping
-from contextlib import closing
 from dataclasses import dataclass
 from graphlib import CycleError, TopologicalSorter
-from hashlib import sha256
 import heapq
 import json
 from pathlib import Path
-import re
-import sqlite3
-from types import MappingProxyType
 import tomllib
 
 
-class Denied(ValueError):
-    """An input or runtime transition failed admission."""
+from pydantic import ValidationError
+from pyrsistent import pmap
+
+from resilience_gate import CallWindow, TransientFailure, WindowClosed
+from runtime_codec import Denied, decode, digest, require, wire
+from run_ledger import RunLedger
+from workflow_contracts import PlanSpec, PolicySpec, RequestSpec, Resilience
 
 
-def require(condition, reason):
-    if not condition:
-        raise Denied(reason)
-
-
-def digest(raw):
-    return sha256(raw).hexdigest()
-
-
-def wire(value):
+def validate(model, value, label):
     try:
-        return json.dumps(value, sort_keys=True, separators=(",", ":"),
-                          ensure_ascii=False, allow_nan=False).encode("utf-8")
-    except (ValueError, TypeError, RecursionError):
-        raise Denied("invalid JSON value") from None
+        return model.model_validate(value)
+    except ValidationError:
+        raise Denied(f"invalid {label} declaration") from None
 
 
-def _object(pairs):
-    result = {}
-    for key, value in pairs:
-        require(key not in result, "duplicate JSON key")
-        result[key] = value
-    return result
-
-
-def decode(raw, limit, label):
-    require(type(raw) is bytes and len(raw) <= limit, f"{label} exceeds wire limit or is not bytes")
-    try:
-        value = json.loads(raw.decode("utf-8"), object_pairs_hook=_object)
-    except (ValueError, RecursionError):
-        raise Denied(f"invalid {label} JSON") from None
-    wire(value)  # Reject non-finite numbers and invalid Unicode, including escapes.
-    return value
-
-
-def fields(value, expected, label):
-    require(type(value) is dict and value.keys() == set(expected), f"unexpected fields in {label}")
-
-
-def identifier(value):
-    return type(value) is str and re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", value) is not None
-
-
-def names(value, label, *, nonempty=False):
-    require(type(value) is list and all(identifier(item) for item in value)
-            and len(set(value)) == len(value) and (value or not nonempty),
-            f"invalid {label} list")
-    return tuple(value)
-
-
-def declaration(value):
-    return type(value) is str and bool(value.strip())
+def unique(values, label):
+    require(len(set(values)) == len(values), f"duplicate {label}")
+    return tuple(values)
 
 
 @dataclass(frozen=True)
@@ -89,17 +47,8 @@ class Policy:
     final_checks: tuple[str, ...]
     limits: Mapping[str, int]
     profiles: Mapping[str, Profile]
-
-
-LIMIT_BOUNDS = {
-    "request_bytes": 1_048_576,
-    "planner_packet_bytes": 2_097_152,
-    "plan_bytes": 1_048_576,
-    "task_count": 4096,
-    "predecessor_count": 64,
-    "prompt_bytes": 262_144,
-    "output_bytes": 262_144,
-}
+    resilience: Resilience
+    effect: str
 
 
 def load_policy(path: Path) -> Policy:
@@ -107,87 +56,63 @@ def load_policy(path: Path) -> Policy:
         raw = source.read(65_537)
     require(len(raw) <= 65_536, "TOML exceeds policy file limit")
     try:
-        config = tomllib.loads(raw.decode("utf-8"))
+        parsed = tomllib.loads(raw.decode("utf-8"))
     except ValueError:
         raise Denied("invalid TOML policy") from None
-    fields(config, ("version", "policy_id", "generation", "final_profile", "final_checks",
-                    "limits", "profiles"), "policy")
-    require(type(config["version"]) is int and config["version"] == 1, "unsupported policy version")
-    require(identifier(config["policy_id"]), "invalid policy id")
-    generation = config["generation"]
-    require(type(generation) is int and generation >= 0, "invalid policy generation")
-    limits = config["limits"]
-    fields(limits, LIMIT_BOUNDS, "limits")
-    for name, maximum in LIMIT_BOUNDS.items():
-        require(type(limits[name]) is int and 1 <= limits[name] <= maximum, f"invalid {name} limit")
 
-    definitions = config["profiles"]
-    require(type(definitions) is dict and definitions and all(map(identifier, definitions)), "invalid profiles")
-    final = config["final_profile"]
-    require(identifier(final) and final in definitions, "undeclared final profile")
-    final_checks = names(config["final_checks"], "final checks", nonempty=True)
+    config = validate(PolicySpec, parsed, "policy")
+    final = config.final_profile
+    require(final in config.profiles, "undeclared final profile")
+    final_checks = unique(config.final_checks, "final check")
+    require(set(unique(config.resilience.replay_profiles, "replay profile")) <= config.profiles.keys(),
+            "undeclared replay profile")
     profiles = {}
-    for name, definition in definitions.items():
-        fields(definition, ("objective", "rules", "inputs", "checks"), f"profile {name}")
-        objective, rules, inputs = (definition[key] for key in ("objective", "rules", "inputs"))
-        require(declaration(objective), "invalid objective")
-        require(type(rules) is list and rules and all(map(declaration, rules)), "invalid rules")
-        require(type(inputs) is dict and len(inputs) <= 64, "invalid input declarations")
-        for alias, source in inputs.items():
-            require(identifier(alias) and type(source) is str, "invalid input declaration")
+    for name, definition in config.profiles.items():
+        for alias, source in definition.inputs.items():
             kind, _, key = source.partition(".")
-            require(identifier(key) and (kind == "request" or
-                    (kind == "task" and key in definitions and key != final)),
+            require(kind == "request" or (key in config.profiles and key != final),
                     f"invalid source for {name}.{alias}")
-        checks = names(definition["checks"], f"{name} checks", nonempty=True)
+        checks = unique(definition.checks, "task check")
         require(not set(checks).intersection(final_checks), "final check used as a task check")
-        profiles[name] = Profile(objective, tuple(rules), MappingProxyType(inputs), checks)
-    return Policy(digest(raw), config["policy_id"], generation, final, final_checks,
-                  MappingProxyType(limits), MappingProxyType(profiles))
+        profiles[name] = Profile(definition.objective, tuple(definition.rules),
+                                 pmap(definition.inputs), checks)
+    return Policy(digest(raw), config.policy_id, config.generation, final, final_checks,
+                  pmap(config.limits.model_dump()), pmap(profiles), config.resilience, config.effect)
 
 
 @dataclass(frozen=True)
 class Task:
     profile: str
     after: tuple[str, ...]
-    inputs: dict[str, str]
+    inputs: Mapping[str, str]
     requirements: tuple[str, ...]
 
 
 def _validate_request(request, policy):
-    fields(request, ("inputs", "requirements"), "request")
-    require(type(request["inputs"]) is dict and all(map(identifier, request["inputs"])), "invalid request inputs")
-    requirements = request["requirements"]
-    require(type(requirements) is dict and requirements, "request requires a requirement manifest")
-    for name, requirement in requirements.items():
-        require(identifier(name), "invalid requirement id")
-        fields(requirement, ("text", "profiles"), "requirement")
-        require(declaration(requirement["text"]), "invalid requirement text")
-        required = names(requirement["profiles"], "required profiles", nonempty=True)
-        require(set(required) <= policy.profiles.keys(), "unknown required profile")
+    request = validate(RequestSpec, request, "request")
+    for requirement in request.requirements.values():
+        required = unique(requirement.profiles, "required profile")
+        require(set(required) <= set(policy.profiles), "unknown required profile")
+    return request.model_dump()
 
 
 def _validate_plan(proposal, request, policy):
-    fields(proposal, ("tasks",), "plan")
-    rows = proposal["tasks"]
-    require(type(rows) is dict and 0 < len(rows) <= policy.limits["task_count"], "invalid task count")
+    rows = validate(PlanSpec, proposal, "plan").tasks
+    require(len(rows) <= policy.limits["task_count"], "invalid task count")
     tasks = {}
     finals = []
     requirements = request["requirements"]
     for name, row in rows.items():
-        require(identifier(name), "invalid task id")
-        fields(row, ("profile", "after", "inputs", "requirements"), "task")
-        profile = row["profile"]
-        require(identifier(profile) and profile in policy.profiles, "undeclared task profile")
-        after = names(row["after"], "predecessor")
+        profile = row.profile
+        require(profile in policy.profiles, "undeclared task profile")
+        after = unique(row.after, "predecessor")
         require(len(after) <= policy.limits["predecessor_count"], "too many predecessors")
         require(set(after) <= rows.keys(), "undeclared predecessor")
-        covered = names(row["requirements"], "task requirements")
-        require(set(covered) <= requirements.keys(), "undeclared requirement")
+        covered = unique(row.requirements, "task requirement")
         required = {key for key, spec in requirements.items() if profile in spec["profiles"]}
         require(required == set(covered), f"invalid requirement scope at {name}")
-        fields(row["inputs"], policy.profiles[profile].inputs, "input bindings")
-        tasks[name] = Task(profile, after, row["inputs"], covered)
+        require(set(row.inputs) == set(policy.profiles[profile].inputs), "unexpected input bindings")
+        tasks[name] = Task(profile, after, pmap(row.inputs), covered)
         if profile == policy.final_profile:
             finals.append(name)
 
@@ -200,7 +125,6 @@ def _validate_plan(proposal, request, policy):
         for alias, declaration in policy.profiles[task.profile].inputs.items():
             kind, _, key = declaration.partition(".")
             target = task.inputs[alias]
-            require(identifier(target), "invalid input binding")
             if kind == "request":
                 require(target == key and key in request["inputs"], "invalid request input binding")
             else:
@@ -218,7 +142,7 @@ def _validate_plan(proposal, request, policy):
         pending.extend(unseen)
         ancestors.update(unseen)
     require(ancestors == tasks.keys(), "task outside final dependency graph")
-    return tasks, final, scheduler
+    return pmap(tasks), final, scheduler
 
 
 @dataclass(frozen=True)
@@ -264,54 +188,57 @@ def _task_packet(name, task, policy, request, accepted):
 
 
 def run(policy: Policy, request_wire: bytes, decompose: Worker, execute: Worker,
-        checks: Mapping[str, Check], evidence_dir: Path) -> bytes:
+        checks: Mapping[str, Check], evidence_dir: Path, *, replay_safe: bool = False,
+        violation_deadline_ns: Callable[[], int] | None = None) -> bytes:
     """Create one run in a new directory and return its final admitted JSON artifact."""
     registry = dict(checks)
     required_checks = set(policy.final_checks)
     required_checks.update(name for profile in policy.profiles.values() for name in profile.checks)
     require(all(callable(registry.get(name)) for name in required_checks), "unbound admission check")
-    evidence_dir.mkdir()
-    with closing(sqlite3.connect(evidence_dir / "run.sqlite")) as connection:
-        connection.execute("PRAGMA synchronous = FULL")
-        connection.execute("""CREATE TABLE events (
-            sequence INTEGER PRIMARY KEY, kind TEXT NOT NULL, task_id TEXT,
-            details TEXT NOT NULL, artifact BLOB
-        )""")
-
-        def record(kind, *, task_id=None, artifact=None, **details):
-            with connection:
-                connection.execute("INSERT INTO events(kind, task_id, details, artifact) VALUES (?, ?, ?, ?)",
-                                   (kind, task_id, wire(details).decode(), artifact))
-
+    require(type(replay_safe) is bool, "invalid replay authority")
+    window = CallWindow(policy.resilience, violation_deadline_ns)
+    with RunLedger(evidence_dir, policy.policy_id, policy.generation, policy.sha256, policy.effect) as ledger:
+        record = ledger.record
         active = None
-        record("run_started", policy_id=policy.policy_id, policy_sha256=policy.sha256,
-               generation=policy.generation)
+        request_hash = (digest(request_wire) if type(request_wire) is bytes
+                        and len(request_wire) <= policy.limits["request_bytes"] else None)
+        plan_hash = None
+        record("run_started", run_id=ledger.run_id, policy_id=policy.policy_id,
+               policy_sha256=policy.sha256, generation=policy.generation, request_sha256=request_hash)
         try:
-            request = decode(request_wire, policy.limits["request_bytes"], "request")
-            _validate_request(request, policy)
+            request = _validate_request(decode(request_wire, policy.limits["request_bytes"], "request"), policy)
             planner_packet = _planner_packet(policy, request)
             require(len(planner_packet) <= policy.limits["planner_packet_bytes"], "planner packet exceeds limit")
-            record("planning_started", request_sha256=digest(request_wire),
+            record("planning_started", request_sha256=request_hash,
                    planner_packet_bytes=len(planner_packet), planner_packet_sha256=digest(planner_packet))
-            plan_wire = _call(decompose, planner_packet, "decomposer failed")
+            plan_wire = _guarded_call(window, decompose, planner_packet, record, stage="plan")
             plan = decode(plan_wire, policy.limits["plan_bytes"], "plan")
             tasks, final, scheduler = _validate_plan(plan, request, policy)
-            record("plan_admitted", plan_sha256=digest(wire(plan)), task_count=len(tasks), artifact=wire(plan))
+            plan_artifact = wire(plan)
+            window.admit(policy.resilience.reserve_ns)
+            plan_hash = digest(plan_artifact)
+            record("plan_admitted", plan_sha256=plan_hash, task_count=len(tasks),
+                   final_task=final, artifact=plan_artifact)
 
             queue = list(scheduler.get_ready())
             heapq.heapify(queue)
-            accepted = {}
+            accepted = pmap()
             while queue:
                 active = heapq.heappop(queue)
                 task = tasks[active]
                 packet = _task_packet(active, task, policy, request, accepted)
                 require(len(packet) <= policy.limits["prompt_bytes"], "task prompt exceeds limit")
+                profile = policy.profiles[task.profile]
+                sources = {alias: target for alias, target in task.inputs.items()
+                           if profile.inputs[alias].startswith("task.")}
+                request_sources = {alias: target for alias, target in task.inputs.items() if alias not in sources}
                 record("task_dispatched", task_id=active, profile=task.profile,
                        prompt_bytes=len(packet), prompt_sha256=digest(packet),
-                       artifact_inputs={alias: digest(accepted[target])
-                                        for alias, target in task.inputs.items()
-                                        if policy.profiles[task.profile].inputs[alias].startswith("task.")})
-                output = _call(execute, packet, "executor failed")
+                       predecessors=task.after, artifact_sources=sources, request_sources=request_sources,
+                       artifact_inputs={alias: digest(accepted[target]) for alias, target in sources.items()})
+                output = _guarded_call(window, execute, packet, record, stage="task",
+                                       task_id=active,
+                                       replay_safe=replay_safe and task.profile in policy.resilience.replay_profiles)
                 value = decode(output, policy.limits["output_bytes"], "output")
                 require(type(value) is dict, "task output must be a JSON object")
                 artifact = wire(value)
@@ -327,19 +254,48 @@ def run(policy: Policy, request_wire: bytes, decompose: Worker, execute: Worker,
                         verdict = _call(registry[name], context, f"final check failed: {name}")
                         require(verdict is True, f"final check denied: {name}")
                     check_names += policy.final_checks
+                window.admit(policy.resilience.reserve_ns)
                 record("task_admitted", task_id=active, artifact=artifact, checks=check_names,
                        artifact_sha256=digest(artifact))
-                accepted[active] = artifact
+                accepted = accepted.set(active, artifact)
                 scheduler.done(active)
                 for ready in scheduler.get_ready():
                     heapq.heappush(queue, ready)
                 active = None
             require(len(accepted) == len(tasks), "incomplete task graph")
-            record("run_admitted", task_id=final, artifact_sha256=digest(accepted[final]))
+            active = final
+            window.admit(policy.resilience.reserve_ns)
+            ledger.receipt(task_id=final, request_sha256=request_hash, plan_sha256=plan_hash,
+                           artifact=accepted[final])
             return accepted[final]
+        except WindowClosed as error:
+            record("window_closed", task_id=active, **error.evidence)
+            ledger.receipt(task_id=active, request_sha256=request_hash, plan_sha256=plan_hash, reason=str(error))
+            raise Denied(str(error)) from None
         except Denied as error:
-            record("run_denied", task_id=active, reason=str(error))
+            ledger.receipt(task_id=active, request_sha256=request_hash, plan_sha256=plan_hash, reason=str(error))
             raise
+
+
+def _guarded_call(window, operation, packet, record, *, stage, task_id=None, replay_safe=False):
+    class CallbackFailed(Exception):
+        pass
+
+    def record_attempt(kind, **details):
+        record(kind, task_id=task_id, stage=stage, **details)
+
+    def invoke(payload):
+        try:
+            return operation(payload)
+        except TransientFailure:
+            raise
+        except Exception:
+            raise CallbackFailed from None
+
+    try:
+        return window.call(invoke, packet, record_attempt, replay_safe=replay_safe)
+    except (TransientFailure, CallbackFailed):
+        raise Denied("decomposer failed" if stage == "plan" else "executor failed") from None
 
 
 def _call(callback, payload, failure):

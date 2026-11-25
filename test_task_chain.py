@@ -48,7 +48,7 @@ class TaskChainTests(unittest.TestCase):
             data = json.loads(packet)
             previous = {task: details for kind, task, details, _ in events(self.evidence)
                         if kind == "task_admitted"}
-            dispatch = events(self.evidence)[-1]
+            dispatch = next(event for event in reversed(events(self.evidence)) if event[0] == "task_dispatched")
             self.assertEqual(dispatch[:2], ("task_dispatched", data["task_id"]))
             self.assertEqual(dispatch[2]["prompt_sha256"], digest(packet))
             self.assertTrue(set(dispatch[2]["artifact_inputs"].values())
@@ -68,9 +68,11 @@ class TaskChainTests(unittest.TestCase):
             self.assertNotIn("operator_note", wire(packet).decode())
         history = events(self.evidence)
         self.assertEqual(history[0][2]["policy_sha256"], digest(self.policy_path.read_bytes()))
-        self.assertEqual(history[-1], ("run_admitted", "task_04_report",
-                                       {"artifact_sha256": digest(result)}, None))
-        self.assertEqual(history[-2][2]["checks"], ["report_assembly", "original_request_reconciliation"])
+        self.assertEqual(history[-1][:2], ("run_admitted", "task_04_report"))
+        self.assertEqual(history[-1][2]["artifact_sha256"], digest(result))
+        self.assertEqual(history[-2][0], "effect_committed")
+        self.assertEqual(history[-2][3], result)
+        self.assertEqual(history[-3][2]["checks"], ["report_assembly", "original_request_reconciliation"])
 
     def test_denial_blocks_successors(self):
         def invalid(packet):
@@ -135,9 +137,10 @@ class TaskChainTests(unittest.TestCase):
 
         self.run_chain(plan=reversed_plan)
         # The plan digest preserves declared list order. Execution and prompt digests are stable.
-        kinds = {"task_dispatched", "task_admitted", "run_admitted"}
-        self.assertEqual([row for row in original if row[0] in kinds],
-                         [row for row in events(self.evidence) if row[0] in kinds])
+        def prompt_and_artifact_hashes(history):
+            return [(kind, task, details.get("prompt_sha256"), details.get("artifact_sha256"))
+                    for kind, task, details, _ in history if kind in {"task_dispatched", "task_admitted"}]
+        self.assertEqual(prompt_and_artifact_hashes(original), prompt_and_artifact_hashes(events(self.evidence)))
 
     def test_prompt_limit_prevents_dispatch(self):
         self.change_policy("prompt_bytes = 4096", "prompt_bytes = 20")

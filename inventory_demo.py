@@ -141,7 +141,7 @@ def main():
         with args.request.open("rb") as source:
             request = source.read(policy.limits["request_bytes"] + 1)
         # This deterministic example supports the inventory request contract.
-        result = run(policy, request, decompose, execute, CHECKS, args.evidence_dir)
+        result = run(policy, request, decompose, execute, CHECKS, args.evidence_dir, replay_safe=True)
     except (Denied, OSError) as error:
         sys.exit(str(error))
     print(result.decode())
