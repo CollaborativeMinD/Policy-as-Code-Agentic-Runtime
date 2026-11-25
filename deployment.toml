@@ -1,7 +1,8 @@
-version = 1
+version = 2
 name = "prompt-chain"
 platforms = ["linux/amd64", "linux/arm64"]
-python_image = "docker.io/library/python:3.13.17-slim@sha256:d98cc29d3266e535dd9da1099688d9cb3ca4753813571e071763d17725460962"
+python_image = "cgr.dev/chainguard/wolfi-base@sha256:28c39be5a5e1e9b85081c10740e8495f6518a865b23bc6a486637c4b21e74b43"
+python_apk = "3.13.18_git20261122-r0"
 uid = 10001
 gid = 10001
 postgres_image = "docker.io/library/postgres:18@sha256:c699303802144847d238196173655dbbecf7a96aeca1565f2b02eb671a1f0b6b"

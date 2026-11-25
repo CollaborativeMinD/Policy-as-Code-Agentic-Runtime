@@ -1,0 +1,7 @@
+textual==8.2.8
+mcp==2.3.0
+uvicorn==0.54.0
+pydantic==2.14.4
+pyrsistent==0.20.0
+tenacity==9.2.1
+psycopg[binary]==3.3.9

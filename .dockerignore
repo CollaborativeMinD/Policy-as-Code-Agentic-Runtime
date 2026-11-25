@@ -10,3 +10,5 @@
 !postgres_lineage.sql
 !policy.example.toml
 !baseline_catalog.json
+
+!observer_policy.toml

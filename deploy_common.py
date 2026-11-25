@@ -50,8 +50,10 @@ def policy(path):
     require(path.stat().st_size <= 65536, "Deployment declaration too large")
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     keys = {"version", "name", "python_image", "platforms", "uid", "gid"} | app.POLICY_FIELDS
+    if data.get("version") == 2:
+        keys.add("python_apk")
     require(data.keys() == keys, "Unknown or missing deployment field")
-    require(type(data["version"]) is int and data["version"] == 1, "Unsupported deployment policy")
+    require(type(data["version"]) is int and data["version"] in (1, 2), "Unsupported deployment policy")
     require(type(data["name"]) is str and re.fullmatch(r"[a-z][a-z0-9-]{2,31}", data["name"]),
             "Invalid deployment name")
     platforms = data["platforms"]
@@ -60,9 +62,13 @@ def policy(path):
             "Deployment must declare AMD64 and ARM64")
     for key in ("uid", "gid"):
         require(type(data[key]) is int and 1000 <= data[key] <= 65534, "Runtime must use an unprivileged ID")
-    for key in ("python_image", *app.POLICY_FIELDS):
+    for key in app.POLICY_FIELDS:
         require(type(data[key]) is str and BASE.fullmatch(data[key]), f"Unpinned image: {key}")
-    require(data["python_image"].startswith("docker.io/library/python:"), "Python base image required")
+    if data["version"] == 1:
+        require(BASE.fullmatch(data["python_image"]) and data["python_image"].startswith("docker.io/library/python:"), "Pinned Python image required")
+    else:
+        require(re.fullmatch(r"cgr\.dev/chainguard/wolfi-base@sha256:[0-9a-f]{64}", data["python_image"])
+                and re.fullmatch(r"3\.13\.\d+_git\d+-r\d+", data["python_apk"]), "Unbound Python base")
     app.validate_policy(data)
     return data
 
@@ -162,6 +168,8 @@ def qualify_compose(path, platform, output, commit):
         "PYTHON_IMAGE": data["python_image"], "SERVICE_UID": data["uid"],
         "SERVICE_GID": data["gid"], "REVISION": commit,
     }
+    if data["version"] == 2:
+        args["PYTHON_APK"] = data["python_apk"]
     build = ["docker", "buildx", "build", "--platform", platform, "--load", "--tag", image]
     for key, value in args.items():
         build.extend(("--build-arg", f"{key}={value}"))
@@ -171,6 +179,8 @@ def qualify_compose(path, platform, output, commit):
     inspected, = json.loads(command("docker", "image", "inspect", image))
     require(f'{inspected["Os"]}/{inspected["Architecture"]}' == platform, "Image platform mismatch")
     require(inspected["Config"]["Labels"]["org.opencontainers.image.revision"] == commit, "Image revision mismatch")
+    from release.qualify import Release, scan
+    report_sha256 = scan(Release.read(), image, output / "scan.json", os.environ.get("PAC_SCANNER", "trivy"))
     stack = Stack(spec, project, app.stack_env())
     try:
         stack("config", "--quiet")
@@ -188,7 +198,7 @@ def qualify_compose(path, platform, output, commit):
     restored, = json.loads(command("docker", "image", "inspect", image))
     require(restored["Id"] == inspected["Id"], "Restored distribution differs from the qualified image")
     put(output / "verification.json", {
-        "status": "PASS", "revision": commit, "platform": platform, "execution_identity": facts,
+        "status": "PASS", "revision": commit, "platform": platform, "execution_identity": facts, "scan_sha256": report_sha256,
         "deployment_policy_sha256": checksum(path), "runtime_policy_sha256": app.runtime_policy_sha256(),
         "compose_sha256": checksum(spec), "image": image, "image_id": inspected["Id"],
         "distribution": {"name": archive.name, "sha256": checksum(archive)}, "witness": observed,
