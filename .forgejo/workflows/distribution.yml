@@ -97,7 +97,8 @@ jobs:
           TARGET_ARCH: ${{ matrix.arch }}
         run: |
           $ErrorActionPreference = "Stop"
-          $env:PAC_SCANNER = & ./release/Get-Scanner.ps1
+          $env:PAC_SCANNER = py -3.13 release/get_scanner.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           py -3.13 deploy_common.py compose --platform "linux/$env:TARGET_ARCH" --output local-proof
           exit $LASTEXITCODE
       - name: Publish signed Compose evidence and image
