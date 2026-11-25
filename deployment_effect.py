@@ -32,7 +32,7 @@ def services(data, common):
             "environment": {"PGHOST": "database", "PGDATABASE": "runtime_lineage", "PGUSER": "lineage_reader",
                             "PGPASSWORD": "${LINEAGE_PASSWORD:-}"},
         },
-        "database": {"image": data["postgres_image"], "command": ["postgres"], "platform": common["platform"], "profiles": ["postgres"],
+        "database": {"image": data["postgres_image"], "platform": common["platform"], "profiles": ["postgres"],
                      "networks": ["lineage"], "environment": {"POSTGRES_DB": "runtime_lineage",
                      "POSTGRES_USER": "postgres", "POSTGRES_PASSWORD": "${LINEAGE_PASSWORD:-}"},
                      "volumes": ["postgres:/var/lib/postgresql"]},
