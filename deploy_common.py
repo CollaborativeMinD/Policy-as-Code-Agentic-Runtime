@@ -181,7 +181,7 @@ def qualify_compose(path, platform, output, commit):
                 "Running identity or architecture differs from deployment policy")
         observed = app.compose_smoke(stack, output)
     finally:
-        stack("down", "--volumes", "--remove-orphans", timeout=120)
+        stack("--profile", "*", "down", "--volumes", "--remove-orphans", timeout=120)
     archive = output / f"{data['name']}-{arch}.image.tar.gz"
     save_image(image, archive)
     command("docker", "image", "load", "--input", str(archive), timeout=240)
